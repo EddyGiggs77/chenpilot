@@ -1,5 +1,11 @@
-import { TransactionPreview, RiskSeverity, DecisionAction } from "./types";
+import { RiskSeverity, TransactionPreview } from "./types";
 
+/**
+ * Single text renderer for transaction previews. Bot replies and the web UI's
+ * plain-text fallback both call this, so a given preview reads identically on
+ * every surface. Rich UIs should render from the structured preview and use
+ * `severityLabel` for consistent wording.
+ */
 
 const SEVERITY_LABEL: Record<RiskSeverity, string> = {
   info: "ℹ️ Info",
@@ -8,6 +14,10 @@ const SEVERITY_LABEL: Record<RiskSeverity, string> = {
   high: "🚨 HIGH",
   critical: "⛔ CRITICAL",
 };
+
+export function severityLabel(severity: RiskSeverity): string {
+  return SEVERITY_LABEL[severity];
+}
 
 const NETWORK_LABEL: Record<TransactionPreview["network"], string> = {
   public: "Stellar Mainnet (real funds)",
@@ -20,98 +30,65 @@ const NETWORK_LABEL: Record<TransactionPreview["network"], string> = {
 // disguise memos, data names or asset codes in chat clients.
 const UNSAFE_CHARS = new RegExp(
   // eslint-disable-next-line no-control-regex
-  "[\\u0000-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069]",
+  "[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]",
   "g"
 );
+
+export function sanitizeForDisplay(value: string): string {
+  if (!value) return "";
+  return value.replace(UNSAFE_CHARS, "\ufffd");
+}
 
 export interface RenderOptions {
   /** Omit info-level flags (e.g. for compact chat replies). Default false. */
   hideInfo?: boolean;
 }
-export function sanitizeForDisplay(input: string): string {
-  if (!input) return "";
-  // Remove bidirectional override characters and replace control characters
-  let sanitized = input.replace(/[\u202a-\u202e\u2066-\u2069]/g, "");
-  // Replace other potential control characters with replacement character
-  sanitized = sanitized.replace(/[\x00-\x1F\x7F-\x9F]/g, "\ufffd");
-  return sanitized;
-}
 
-export function severityLabel(severity: RiskSeverity): string {
-  switch (severity) {
-    case "critical":
-      return "🔴 CRITICAL RISK";
-    case "high":
-      return "🟠 HIGH RISK";
-    case "medium":
-      return "🟡 Medium Risk";
-    case "low":
-    default:
-      return "🟢 Low Risk";
-  }
-}
-
-export function renderPreviewText(preview: TransactionPreview): string {
+export function renderPreviewText(preview: TransactionPreview, options: RenderOptions = {}): string {
   const lines: string[] = [];
 
-  if (preview.decision === "refuse") {
-    lines.push("⛔ TRANSACTION BLOCKED");
-    lines.push(`Reason: ${sanitizeForDisplay(preview.decisionReason)}`);
-  } else if (preview.decision === "confirm") {
-    lines.push("⚠️ TRANSACTION REQUIRES CONFIRMATION");
-    lines.push(`Reason: ${sanitizeForDisplay(preview.decisionReason)}`);
-  } else {
-    lines.push("✅ TRANSACTION PREVIEW (Safe)");
-  }
+  const header =
+    preview.decision === "refuse"
+      ? "⛔ TRANSACTION BLOCKED"
+      : preview.decision === "confirm_with_warning"
+        ? "🚨 REVIEW CAREFULLY BEFORE APPROVING"
+        : "📝 Transaction preview";
+  lines.push(header, "");
 
+  lines.push(`Network: ${NETWORK_LABEL[preview.network]}`);
+  lines.push(`Account: ${preview.sourceAccount}`);
+  if (preview.isFeeBump && preview.feeSource) lines.push(`Fee paid by: ${preview.feeSource}`);
+  lines.push(`Max fee: ${preview.feeXlm} XLM`);
+  if (preview.memo !== null) lines.push(`Memo: ${sanitizeForDisplay(preview.memo)}`);
+  lines.push(`Expires: ${preview.validUntil ?? "never"}`);
   lines.push("");
 
-  const isMainnet = preview.networkPassphrase.includes("Public Global Stellar Network");
-  const networkDisplay = isMainnet
-    ? "Stellar Mainnet (real funds)"
-    : `Stellar Testnet / Network (${sanitizeForDisplay(preview.network)})`;
-  lines.push(`Network: ${networkDisplay}`);
-  lines.push(`Source Account: ${sanitizeForDisplay(preview.sourceAccount)}`);
-  lines.push(`Fee: ${sanitizeForDisplay(preview.feeXlm)} XLM (${sanitizeForDisplay(preview.fee)} stroops)`);
-  lines.push(`Sequence: ${sanitizeForDisplay(preview.sequence)}`);
-  if (preview.memo) {
-    lines.push(`Memo: ${sanitizeForDisplay(preview.memo)}`);
-  }
-
-  lines.push("");
-  lines.push(`Overall Risk Level: ${severityLabel(preview.riskLevel)}`);
-
-  if (preview.riskFlags.length > 0) {
-    lines.push("Risk Warnings:");
-    for (const flag of preview.riskFlags) {
-      lines.push(` - [${flag.code}] (${flag.severity.toUpperCase()}) ${sanitizeForDisplay(flag.message)}`);
-    }
-    lines.push("");
-  }
-
-  lines.push(`Operations (${preview.operations.length}):`);
+  lines.push(`Actions (${preview.operations.length}):`);
   for (const op of preview.operations) {
-    lines.push(` ${op.index}. Type: ${op.type}`);
-    lines.push(`    Summary: ${sanitizeForDisplay(op.summary)}`);
-    lines.push(`    Asset: ${sanitizeForDisplay(op.asset)} | Amount: ${sanitizeForDisplay(op.amount)}`);
-    if (op.destination) {
-      lines.push(`    Destination: ${sanitizeForDisplay(op.destination)}`);
+    lines.push(`${op.index + 1}. ${sanitizeForDisplay(op.summary)}`);
   }
+
+  const flags = preview.riskFlags.filter((f) => !(options.hideInfo && f.severity === "info"));
+  if (flags.length) {
+    lines.push("", "Warnings:");
+    for (const f of flags) {
+      const where = f.operationIndex !== undefined ? ` (action ${f.operationIndex + 1})` : "";
+      lines.push(`${severityLabel(f.severity)}${where}: ${sanitizeForDisplay(f.message)}`);
+    }
   }
 
   if (preview.intent.compared) {
-    lines.push("");
-    if (preview.intent.matches) {
-      lines.push("Intent Check: MATCHES user request");
-    } else {
-      lines.push("Intent Check: MISMATCH DETECTED!");
-      for (const mismatch of preview.intent.mismatches) {
-        lines.push(` - ${sanitizeForDisplay(mismatch)}`);
+    lines.push("", preview.intent.matches ? "✅ Matches your request." : "❌ Does NOT match your request.");
+    if (!preview.intent.matches && preview.intent.mismatches.length) {
+      for (const m of preview.intent.mismatches) {
+        lines.push(` - Mismatch (${m.field}): expected ${m.expected}, got ${m.actual}`);
       }
     }
   }
 
-  lines.push("");
-  lines.push(`Audit Preview ID: ${preview.audit.previewId}`);
+  lines.push("", `Decision: ${preview.decisionReason}`);
+  lines.push(`Preview ID: ${preview.audit.previewId}`);
+  lines.push(`Tx hash: ${preview.audit.transactionHash}`);
+
   return lines.join("\n");
 }
