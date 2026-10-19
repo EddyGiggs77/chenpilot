@@ -1,6 +1,3 @@
-jest.unmock("@stellar/stellar-sdk");
-jest.unmock("stellar-sdk");
-
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { AntiPhishingPreview } from "../AntiPhishingPreview";
 
