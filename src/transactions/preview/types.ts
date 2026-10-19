@@ -41,6 +41,13 @@ export interface TransactionIntent {
   network?: PreviewNetwork;
 }
 
+export type IntentMismatchField =
+  | "operationType"
+  | "asset"
+  | "amount"
+  | "destination"
+  | "network";
+
 export interface IntentMismatch {
   field: IntentMismatchField;
   expected: string;
