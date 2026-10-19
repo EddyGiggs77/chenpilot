@@ -1,5 +1,4 @@
-import * as StellarSdk from "@stellar/stellar-sdk";
-import { TransactionPreview, TransactionIntent, BuildPreviewInput } from "./types";
+import { TransactionPreview, BuildPreviewInput } from "./types";
 import { buildTransactionPreview } from "./transactionPreview";
 import { recordPreviewAudit, PreviewAuditSink } from "./previewAudit";
 import { renderPreviewText, RenderOptions } from "./renderPreview";
