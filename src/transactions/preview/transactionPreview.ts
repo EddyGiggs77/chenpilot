@@ -186,6 +186,88 @@ export function decide(
   return { decision: "proceed", reason: "No high-risk actions detected." };
 }
 
+export function buildTransactionPreview(input: BuildPreviewInput): TransactionPreview {
+  const now = input.now ?? new Date();
+  const decoded = SafeXdrDecoder.decodeTransaction(input.xdr, input.networkPassphrase);
+  const network = detectNetwork(input.networkPassphrase);
+
+  const operations = decoded.operations.map((op, idx) =>
+    decodeOperation(op, idx, decoded.sourceAccount)
+  );
+
+  const feeStroops = BigInt(decoded.fee);
+  const envelopeRisk = assessEnvelope({
+    network,
+    feeStroops,
+    operationCount: operations.length,
+    validUntil: decoded.validUntil,
+  });
+
+  const opRisk = operations.flatMap((op) => assessOperation(op));
+  const riskFlags = [...envelopeRisk, ...opRisk];
+
+  for (const op of operations) {
+    if (op.movesValue && op.amount && op.destination) {
+      try {
+        if (toStroops(op.amount) > BigInt(1_000_000_000_000)) {
+          riskFlags.push({
+            code: "HIGH_VALUE_TRANSFER",
+            severity: "high",
+            message: `Operation ${op.index + 1} transfers an unusually large amount (${op.amount} ${op.asset}).`,
+            operationIndex: op.index,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  const comparison = compareToIntent(operations, network, input.intent);
+  const { decision, reason } = decide(operations, riskFlags, comparison, input.intent);
+
+  const riskLevel = maxSeverity(riskFlags.map((f) => f.severity));
+
+  const transactionHash = createHash("sha256").update(input.xdr).digest("hex");
+  const intentDigest = input.intent ? sha256(input.intent) : null;
+
+  const previewWithoutAudit = {
+    network,
+    networkPassphrase: input.networkPassphrase,
+    sourceAccount: decoded.sourceAccount,
+    fee: decoded.fee,
+    feeXlm: stroopsToXlm(feeStroops),
+    sequence: decoded.sequence,
+    memo: decoded.memo ? describeMemo(decoded.memo) : null,
+    validUntil: decoded.validUntil,
+    isFeeBump: decoded.isFeeBump,
+    feeSource: decoded.feeSource,
+    operations,
+    riskFlags,
+    riskLevel,
+    intent: comparison,
+    decision,
+    decisionReason: reason,
+  };
+
+  const previewDigest = sha256(previewWithoutAudit);
+  const previewId = `prv_${randomUUID().replace(/-/g, "")}`;
+
+  return {
+    ...previewWithoutAudit,
+    audit: {
+      previewId,
+      generatedAt: now.toISOString(),
+      transactionHash,
+      intentDigest,
+      previewDigest,
+      requestId: input.requestId,
+      userId: input.userId,
+      channel: input.channel,
+    },
+  };
+}
+
 /**
  * Decodes a transaction envelope into a structured, human-safe preview.
  * Throws an XDR error (from SafeXdrDecoder) when the payload cannot be decoded;

@@ -181,7 +181,7 @@ export function decodeOperation(
       };
     }
 
-    case "changeTrust": {
+    case 'changeTrust': {
       const limit = str(op.limit);
       const asset = formatAsset(op.line);
       const removing = limit !== undefined && Number(limit) === 0;

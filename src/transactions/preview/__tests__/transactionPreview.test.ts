@@ -153,6 +153,17 @@ describe("buildTransactionPreview", () => {
   });
 
   it("reports network context, fees, expiry and memo", () => {
+    const memo = StellarSdk.Memo.text("hello");
+    const preview = buildTransactionPreview({
+      xdr: buildXdr([payment()], { fee: "2000", memo, timeout: 60 }),
+      networkPassphrase: TESTNET,
+    });
+    expect(preview.fee).toBe("2000");
+    expect(preview.memo).toBe("hello");
+    expect(preview.network).toBe("testnet");
+  });
+
+  it("reports network context, fees, expiry and memo", () => {
     const preview = buildTransactionPreview({
       xdr: buildXdr([payment()], {
         fee: "5000000",
