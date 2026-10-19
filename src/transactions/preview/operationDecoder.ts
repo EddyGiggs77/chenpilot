@@ -185,11 +185,13 @@ export function decodeOperation(
       const limit = str(op.limit);
       const asset = formatAsset(op.line);
       const removing = limit !== undefined && Number(limit) === 0;
+      const highRisk = Number(limit ?? "1") > 1000000000;
       return {
         ...base,
         asset,
-        details: { limit: limit ?? null, removing },
-        summary: removing ? `Remove trustline for ${asset}` : `Trust asset ${asset} (limit ${limit})`,
+        highRisk,
+        details: { limit: limit ?? null, removing, highRisk },
+        summary: removing ? `Remove trustline for ${asset}` : `Trust asset ${asset} (limit ${limit})${highRisk ? " [HIGH RISK: Massive trust limit]" : ""}`,
       };
     }
 

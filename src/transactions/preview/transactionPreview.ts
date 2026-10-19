@@ -186,6 +186,91 @@ export function decide(
   return { decision: "proceed", reason: "No high-risk actions detected." };
 }
 
+export function buildTransactionPreview(input: BuildPreviewInput): TransactionPreview {
+  const decoded = SafeXdrDecoder.decodeTransaction(input.xdr, input.networkPassphrase);
+  const network = detectNetwork(input.networkPassphrase);
+  const sourceAccount = decoded.source;
+  const feeStroops = BigInt(decoded.fee);
+  const feeXlm = stroopsToXlm(feeStroops);
+  const sequence = decoded.sequenceNumber;
+  const memo = decoded.memo ? describeMemo(decoded.memo) : null;
+  const validUntil = decoded.timeBounds ? new Date(Number(decoded.timeBounds.maxTime) * 1000).toISOString() : null;
+  const isFeeBump = decoded.feeBump ?? false;
+  const feeSource = decoded.feeSource;
+
+  const operations = decoded.operations.map((op, index) => decodeOperation(op, index, sourceAccount));
+  const comparison = compareToIntent(operations, network, input.intent);
+
+  const riskFlags: RiskFlag[] = [
+    ...assessEnvelope({ network, feeStroops, operationCount: operations.length, validUntil }),
+    ...operations.flatMap(assessOperation),
+  ];
+
+  if (input.intent?.operationTypes) {
+    const declared = new Set(input.intent.operationTypes);
+    for (const op of operations) {
+      if (!declared.has(op.type)) {
+        riskFlags.push({
+          code: 'INTENT_OPERATIONTYPE_MISMATCH',
+          severity: 'high',
+          message: `Operation ${op.index + 1} type "${op.type}" was not requested.`,
+          operationIndex: op.index,
+        });
+      }
+    }
+  }
+
+  if (!comparison.matches && comparison.compared) {
+    for (const m of comparison.mismatches) {
+      riskFlags.push({
+        code: `INTENT_MISMATCH_${m.field.toUpperCase()}`,
+        severity: m.severity,
+        message: `Mismatch on ${m.field}: expected ${m.expected}, got ${m.actual}.`,
+        operationIndex: m.operationIndex,
+      });
+    }
+  }
+
+  const severities = riskFlags.map((f) => f.severity);
+  const riskLevel = severities.length ? maxSeverity(severities) : 'info';
+  const { decision, reason } = decide(operations, riskFlags, comparison, input.intent);
+
+  const auditTrailDigestInput = { sourceAccount, operations: operations.map(o => o.summary), fee: decoded.fee, memo };
+  const previewDigest = sha256(auditTrailDigestInput);
+  const intentDigest = input.intent ? sha256(input.intent) : null;
+  const previewId = randomUUID();
+  const transactionHash = sha256(input.xdr);
+
+  return {
+    network,
+    networkPassphrase: input.networkPassphrase,
+    sourceAccount,
+    fee: decoded.fee,
+    feeXlm,
+    sequence,
+    memo,
+    validUntil,
+    isFeeBump,
+    feeSource,
+    operations,
+    riskFlags,
+    riskLevel,
+    intent: comparison,
+    decision,
+    decisionReason: reason,
+    audit: {
+      previewId,
+      generatedAt: (input.now ?? new Date()).toISOString(),
+      transactionHash,
+      intentDigest,
+      previewDigest,
+      requestId: input.requestId,
+      userId: input.userId,
+      channel: input.channel,
+    },
+  };
+}
+
 /**
  * Decodes a transaction envelope into a structured, human-safe preview.
  * Throws an XDR error (from SafeXdrDecoder) when the payload cannot be decoded;
