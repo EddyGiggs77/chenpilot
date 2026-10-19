@@ -1,4 +1,4 @@
-import { TransactionPreview, renderPreviewText } from "../../src/transactions/preview";
+import { TransactionPreview, renderPreviewText } from "../../../../src/transactions/preview";
 import type { CommandReply } from "../commands/types";
 
 export type PreviewDecision = "proceed" | "confirm_with_warning" | "refuse";
