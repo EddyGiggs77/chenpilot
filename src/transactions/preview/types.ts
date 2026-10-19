@@ -1,15 +1,4 @@
-/**
- * Structured, decoded transaction preview.
- *
- * Every surface that asks a user to approve a transaction (bot, web UI, API)
- * renders from this one structure, which is built from the decoded envelope —
- * never from the agent's free-text description of what it *thinks* the
- * transaction does.
- */
-
 export type PreviewNetwork = "public" | "testnet" | "futurenet" | "unknown";
-
-export type RiskSeverity = "info" | "low" | "medium" | "high" | "critical";
 
 /**
  * What the caller must do with the preview:
@@ -18,14 +7,6 @@ export type RiskSeverity = "info" | "low" | "medium" | "high" | "critical";
  *  - refuse: do not offer signing at all
  */
 export type PreviewDecision = "proceed" | "confirm_with_warning" | "refuse";
-
-export interface RiskFlag {
-  code: string;
-  severity: RiskSeverity;
-  message: string;
-  /** Index of the operation that raised the flag; absent for envelope-level flags. */
-  operationIndex?: number;
-}
 
 export interface PreviewOperation {
   index: number;
@@ -60,26 +41,12 @@ export interface TransactionIntent {
   network?: PreviewNetwork;
 }
 
-export type IntentMismatchField =
-  | "operationType"
-  | "asset"
-  | "amount"
-  | "destination"
-  | "network";
-
 export interface IntentMismatch {
   field: IntentMismatchField;
   expected: string;
   actual: string;
   operationIndex?: number;
   severity: RiskSeverity;
-}
-
-export interface IntentComparison {
-  /** False when no intent was supplied, so nothing could be compared. */
-  compared: boolean;
-  matches: boolean;
-  mismatches: IntentMismatch[];
 }
 
 export interface PreviewAuditTrail {
@@ -96,29 +63,6 @@ export interface PreviewAuditTrail {
   channel?: string;
 }
 
-export interface TransactionPreview {
-  network: PreviewNetwork;
-  networkPassphrase: string;
-  sourceAccount: string;
-  /** Fee in stroops as a decimal string. */
-  fee: string;
-  feeXlm: string;
-  sequence: string;
-  memo: string | null;
-  /** ISO timestamp; null when the transaction never expires. */
-  validUntil: string | null;
-  isFeeBump: boolean;
-  feeSource?: string;
-  operations: PreviewOperation[];
-  riskFlags: RiskFlag[];
-  riskLevel: RiskSeverity;
-  intent: IntentComparison;
-  decision: PreviewDecision;
-  /** Short reason for the decision, suitable for showing to the user. */
-  decisionReason: string;
-  audit: PreviewAuditTrail;
-}
-
 export interface BuildPreviewInput {
   /** Base64 transaction envelope XDR. */
   xdr: string;
@@ -129,4 +73,61 @@ export interface BuildPreviewInput {
   channel?: string;
   /** Override clock for deterministic tests. */
   now?: Date;
+}
+
+export type RiskSeverity = "low" | "medium" | "high" | "critical";
+
+export type DecisionAction = "proceed" | "confirm" | "refuse";
+
+export interface RiskFlag {
+  code: string;
+  severity: RiskSeverity;
+  message: string;
+  operationIndex?: number;
+}
+
+export interface TransactionOperation {
+  index: number;
+  type: string;
+  summary: string;
+  sourceAccount: string;
+  foreignSource: boolean;
+  movesValue: boolean;
+  asset: string;
+  amount: string;
+  destination?: string;
+  details: Record<string, any>;
+}
+
+export interface IntentComparison {
+  compared: boolean;
+  matches: boolean;
+  mismatches: string[];
+}
+
+export interface AuditInfo {
+  previewId: string;
+  generatedAt: string;
+  transactionHash: string;
+  intentDigest: string;
+  previewDigest: string;
+}
+
+export interface TransactionPreview {
+  network: string;
+  networkPassphrase: string;
+  sourceAccount: string;
+  fee: string;
+  feeXlm: string;
+  sequence: string;
+  memo: string | null;
+  validUntil: string | null;
+  isFeeBump: boolean;
+  operations: TransactionOperation[];
+  riskFlags: RiskFlag[];
+  riskLevel: RiskSeverity;
+  intent: IntentComparison;
+  decision: DecisionAction;
+  decisionReason: string;
+  audit: AuditInfo;
 }
