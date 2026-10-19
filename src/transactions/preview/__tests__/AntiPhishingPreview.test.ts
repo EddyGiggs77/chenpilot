@@ -1,5 +1,6 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { AntiPhishingPreview } from "../AntiPhishingPreview";
+import { describe, it, expect } from "@jest/globals";
 
 const TESTNET = StellarSdk.Networks.TESTNET;
 const source = StellarSdk.Keypair.random();
