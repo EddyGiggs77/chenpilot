@@ -2,9 +2,6 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import { AntiPhishingPreviewEngine } from "../AntiPhishingPreviewEngine";
 import { PreviewAuditSink } from "../previewAudit";
 
-jest.unmock("@stellar/stellar-sdk");
-jest.unmock("stellar-sdk");
-
 const TESTNET = StellarSdk.Networks.TESTNET;
 const source = StellarSdk.Keypair.random();
 const recipient = StellarSdk.Keypair.random().publicKey();
